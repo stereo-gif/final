@@ -1,0 +1,5 @@
+rdkit
+pubchempy
+py3Dmol
+stmol
+numpy
