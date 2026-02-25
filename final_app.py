@@ -7,10 +7,9 @@ from stmol import showmol
 import py3Dmol
 import numpy as np
 
-# 1. إعدادات الصفحة
+# 1. إعدادات الصفحة والـ Sidebar
 st.set_page_config(page_title="Chemical Isomer Analysis Pro", layout="wide")
 
-# 2. تصميم الواجهة والـ Sidebar (مرجع علمي ثابت)
 with st.sidebar:
     st.markdown(f"""
     <div style="background-color: #fdf2f2; padding: 15px; border-radius: 10px; border: 1px solid #800000;">
@@ -21,14 +20,8 @@ with st.sidebar:
         <p><b>4. Ra / Sa (Axial):</b> Allenes (C=C=C).</p>
     </div>
     """, unsafe_allow_html=True)
-    st.info("💡 Note: E/Z is required when all 4 groups on the double bond are different.")
 
-st.markdown("""
-<style>
-    .stApp { background-color: white; color: black; }
-</style>
-<h2 style='color: #800000; font-family: serif; border-bottom: 2px solid #dcdde1;'>Chemical Isomer Analysis System 2.0</h2>
-""", unsafe_allow_html=True)
+st.markdown("<h2 style='color: #800000; font-family: serif; border-bottom: 2px solid #dcdde1;'>Chemical Isomer Analysis System 2.0</h2>", unsafe_allow_html=True)
 
 # دالة حساب Ra/Sa للألين
 def get_allene_stereo(mol):
@@ -64,7 +57,6 @@ def render_3d(mol, title):
     st.write(f"**{title}**")
     showmol(view, height=300, width=400)
 
-# 3. مدخلات المستخدم
 compound_name = st.text_input("Enter Structure Name:", "2,3-pentadiene")
 
 if st.button("Analyze & Visualize"):
@@ -74,7 +66,7 @@ if st.button("Analyze & Visualize"):
             smiles = results[0].smiles
             mol = Chem.MolFromSmiles(smiles)
             
-            # إجبار الألين على الكايراليتي
+            # تحديد نمط الألين لإجبار الكايراليتي
             pattern = Chem.MolFromSmarts("C=C=C")
             matches = mol.GetSubstructMatches(pattern)
             for match in matches:
@@ -83,7 +75,7 @@ if st.button("Analyze & Visualize"):
             opts = StereoEnumerationOptions(tryEmbedding=True, onlyUnassigned=False)
             isomers = list(EnumerateStereoisomers(mol, options=opts))
             
-            # خلق الأيزومر المرآة يدوياً للألين لو مظهرش
+            # خلق الأيزومر المرآة يدوياً لو لزم الأمر
             if len(isomers) == 1:
                 iso2 = Chem.Mol(isomers[0])
                 for atom in iso2.GetAtoms():
@@ -92,46 +84,39 @@ if st.button("Analyze & Visualize"):
                     elif tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW: atom.SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
                 isomers.append(iso2)
 
-            st.subheader(f"Total Isomers Found: {len(isomers)}")
-            
             labels = []
+            final_mols = []
             for i, iso in enumerate(isomers):
-                # أهم خطوة: حساب الاستيريو كيمستري وتجهيز الروابط (Wedges/Dashes)
                 Chem.AssignStereochemistry(iso, force=True, cleanIt=True)
                 
-                # كشف الأيزومرات
+                # --- السر هنا لإظهار الـ Wedges ---
+                # 1. توليد إحداثيات 2D تحترم الـ Stereo
+                AllChem.Compute2DCoords(iso)
+                # 2. تحويل الـ StereoInfo لروابط Wedge/Dash فعلية
+                iso = Chem.AddHs(iso) # الهيدروجين بيساعد في توضيح الـ Wedge
+                Chem.WedgeMolBonds(iso, iso.GetConformer())
+                final_mols.append(iso)
+                
                 axial = get_allene_stereo(iso)
                 centers = Chem.FindMolChiralCenters(iso, includeUnassigned=True)
-                
-                stereo_text = []
-                if centers: stereo_text.extend([f"{c[1]}" for c in centers])
-                if axial: stereo_text.extend(axial)
-                
-                label = f"Isomer {i+1}: {', '.join(stereo_text) if stereo_text else 'Achiral'}"
-                labels.append(label)
+                stereo_text = [f"{c[1]}" for c in centers] + axial
+                labels.append(f"Isomer {i+1}: {', '.join(stereo_text) if stereo_text else 'Achiral'}")
 
-            # --- رسم الـ 2D Grid مع الـ Hatched Bonds ---
-            # استخدام دالة DrawOptions لتوضيح الروابط الفراغية
-            d_opts = Draw.MolDrawOptions()
-            d_opts.addStereoAnnotation = True # كتابة R/S على الذرات
-            
-            img = Draw.MolsToGridImage(isomers, 
-                                       molsPerRow=2, 
-                                       subImgSize=(400, 400), 
-                                       legends=labels,
-                                       useSVG=False, # PNG بيدعم الـ Wedge بشكل مستقر
-                                       drawOptions=d_opts)
-            st.image(img, use_container_width=True)
+            # رسم الـ Grid مع خيارات متقدمة
+            img = Draw.MolsToGridImage(
+                final_mols, 
+                molsPerRow=2, 
+                subImgSize=(400, 400), 
+                legends=labels,
+                useSVG=True # الـ SVG أفضل في إظهار الـ Wedges/Dashes بوضوح
+            )
+            st.write(img, unsafe_allow_html=True)
 
-            # عرض الـ 3D
             st.divider()
-            cols = st.columns(len(isomers))
-            for i, iso in enumerate(isomers):
+            cols = st.columns(len(final_mols))
+            for i, iso in enumerate(final_mols):
                 with cols[i]:
                     render_3d(iso, labels[i])
                     
     except Exception as e:
         st.error(f"Error: {e}")
-
-st.markdown("---")
-st.caption("Advanced 2D/3D Stereochemistry Visualization Engine Active.")
