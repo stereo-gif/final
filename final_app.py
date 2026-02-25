@@ -45,7 +45,6 @@ def get_allene_stereo(mol):
                         results.append("Ra" if dot > 0 else "Sa")
     return results
 
-# دالة عرض الـ 3D
 def render_3d(mol, title):
     mol_3d = Chem.AddHs(mol)
     AllChem.EmbedMolecule(mol_3d, AllChem.ETKDG())
@@ -57,6 +56,7 @@ def render_3d(mol, title):
     st.write(f"**{title}**")
     showmol(view, height=300, width=400)
 
+# 3. مدخلات المستخدم
 compound_name = st.text_input("Enter Structure Name:", "2,3-pentadiene")
 
 if st.button("Analyze & Visualize"):
@@ -66,17 +66,18 @@ if st.button("Analyze & Visualize"):
             smiles = results[0].smiles
             mol = Chem.MolFromSmiles(smiles)
             
-            # تحديد نمط الألين لإجبار الكايراليتي
+            # تحديد الألين لإجبار الأيزومرات
             pattern = Chem.MolFromSmarts("C=C=C")
-            matches = mol.GetSubstructMatches(pattern)
-            for match in matches:
-                mol.GetAtomWithIdx(match[0]).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
-            
+            if mol.HasSubstructMatch(pattern):
+                matches = mol.GetSubstructMatches(pattern)
+                for match in matches:
+                    mol.GetAtomWithIdx(match[0]).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
+
             opts = StereoEnumerationOptions(tryEmbedding=True, onlyUnassigned=False)
             isomers = list(EnumerateStereoisomers(mol, options=opts))
             
-            # خلق الأيزومر المرآة يدوياً لو لزم الأمر
-            if len(isomers) == 1:
+            # خلق الأيزومر المرآة للألين يدوياً
+            if len(isomers) == 1 and mol.HasSubstructMatch(pattern):
                 iso2 = Chem.Mol(isomers[0])
                 for atom in iso2.GetAtoms():
                     tag = atom.GetChiralTag()
@@ -84,35 +85,34 @@ if st.button("Analyze & Visualize"):
                     elif tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW: atom.SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
                 isomers.append(iso2)
 
-            labels = []
+            st.subheader("2D Isomer Grid (Wedge/Dash View)")
+            
             final_mols = []
+            labels = []
             for i, iso in enumerate(isomers):
+                # تجهيز الاستيريو كيمستري
                 Chem.AssignStereochemistry(iso, force=True, cleanIt=True)
-                
-                # --- السر هنا لإظهار الـ Wedges ---
-                # 1. توليد إحداثيات 2D تحترم الـ Stereo
+                # توليد إحداثيات 2D تراعي الروابط الفراغية
                 AllChem.Compute2DCoords(iso)
-                # 2. تحويل الـ StereoInfo لروابط Wedge/Dash فعلية
-                iso = Chem.AddHs(iso) # الهيدروجين بيساعد في توضيح الـ Wedge
-                Chem.WedgeMolBonds(iso, iso.GetConformer())
-                final_mols.append(iso)
                 
+                # حساب الـ Labels
                 axial = get_allene_stereo(iso)
                 centers = Chem.FindMolChiralCenters(iso, includeUnassigned=True)
                 stereo_text = [f"{c[1]}" for c in centers] + axial
                 labels.append(f"Isomer {i+1}: {', '.join(stereo_text) if stereo_text else 'Achiral'}")
+                final_mols.append(iso)
 
-            # رسم الـ Grid مع خيارات متقدمة
+            # رسم الشبكة (PNG لضمان الظهور والـ Wedges)
             img = Draw.MolsToGridImage(
                 final_mols, 
-                molsPerRow=2, 
-                subImgSize=(400, 400), 
+                molsPerRow=3, 
+                subImgSize=(350, 350), 
                 legends=labels,
-                useSVG=True # الـ SVG أفضل في إظهار الـ Wedges/Dashes بوضوح
+                useSVG=False  # الـ PNG أضمن في Streamlit للـ Wedges
             )
-            st.write(img, unsafe_allow_html=True)
+            st.image(img, use_container_width=True)
 
-            st.divider()
+            st.subheader("3D Interactive View")
             cols = st.columns(len(final_mols))
             for i, iso in enumerate(final_mols):
                 with cols[i]:
