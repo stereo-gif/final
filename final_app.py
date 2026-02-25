@@ -7,29 +7,36 @@ from stmol import showmol
 import py3Dmol
 import numpy as np
 
-# 1. إعدادات الصفحة والـ Sidebar
-st.set_page_config(page_title="StereoMaster Pro", layout="wide")
+# 1. إعدادات الصفحة
+st.set_page_config(page_title="Professional Isomer Analyzer", layout="wide")
 
-with st.sidebar:
-    st.markdown("""
-    <div style="background-color: #fdf2f2; padding: 15px; border-radius: 10px; border: 1px solid #800000;">
-        <h3 style="color: #800000; font-family: serif;">Scientific Notes</h3>
-        <p><b>1. Cis / Trans:</b> Relative side.</p>
-        <p><b>2. E / Z:</b> Absolute priority.</p>
-        <p><b>3. R / S:</b> Chiral Centers.</p>
-        <p><b>4. Ra / Sa:</b> Axial (Allenes).</p>
-    </div>
-    """, unsafe_allow_html=True)
+# 2. عرض النوت (Reference Guide) في واجهة التطبيق الرئيسية
+st.markdown("""
+<div style="background-color: #fdf2f2; padding: 20px; border-radius: 15px; border-left: 8px solid #800000; margin-bottom: 25px;">
+    <h3 style="color: #800000; font-family: serif; margin-top: 0;">🧪 Stereoisomerism Reference Guide</h3>
+    <table style="width:100%; border:none; color: #333;">
+        <tr>
+            <td><b>1. Cis / Trans:</b> Relative side arrangement.</td>
+            <td><b>2. E / Z (CIP):</b> Absolute priority system.</td>
+        </tr>
+        <tr>
+            <td><b>3. R / S:</b> Optical chirality centers.</td>
+            <td><b>4. Ra / Sa (Axial):</b> Allenes (C=C=C systems).</td>
+        </tr>
+    </table>
+    <p style="margin-bottom: 0; margin-top: 10px; font-size: 0.9em; color: #666;">
+        <i>*Note: E/Z is required when all 4 groups on the double bond are different.</i>
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
-# دالة الرسم الذكية: تميز الألين وتعطيه رسم احترافي
+st.markdown("<h2 style='color: #800000; font-family: serif;'>Professional Isomer Analysis System</h2>", unsafe_allow_html=True)
+
+# دالة الرسم الذكية (ألين واضح وباقي المركبات رقيقة)
 def render_smart_2d(mol):
-    # نتحقق إذا كان الجزيء ألين
     is_allene = mol.HasSubstructMatch(Chem.MolFromSmarts("C=C=C"))
-    
-    # إضافة الهيدروجين ضروري للألين ليظهر الـ Wedges عليه
     m = Chem.AddHs(mol) if is_allene else Chem.RemoveHs(mol)
     
-    # توليد إحداثيات (3D ثم 2D) لضمان ظهور الـ Wedges بشكل الكتاب المدرسي
     if AllChem.EmbedMolecule(m, AllChem.ETKDG()) != -1:
         AllChem.Compute2DCoords(m)
         Chem.WedgeMolBonds(m, m.GetConformer())
@@ -40,10 +47,10 @@ def render_smart_2d(mol):
     d_opts.addStereoAnnotation = True
     
     if is_allene:
-        d_opts.bondLineWidth = 3.0    # سُمك مخصص للألين لإبراز الـ Wedges
+        d_opts.bondLineWidth = 3.0
         d_opts.minFontSize = 18
     else:
-        d_opts.bondLineWidth = 1.5    # سُمك رقيق للمركبات العادية
+        d_opts.bondLineWidth = 1.6
         d_opts.minFontSize = 14
 
     img = Draw.MolToImage(m, size=(500, 500), options=d_opts)
@@ -72,11 +79,10 @@ def get_allene_stereo(mol):
     except: return ""
     return ""
 
-# واجهة التطبيق
-st.markdown("<h2 style='color: #800000;'>Professional Isomer Analyzer</h2>", unsafe_allow_html=True)
-name = st.text_input("Enter Molecule Name:", "2,3-pentadiene")
+# المدخلات
+name = st.text_input("Enter Molecule Name (e.g., 2,3-pentadiene or Tartaric acid):", "2,3-pentadiene")
 
-if st.button("Generate Isomers"):
+if st.button("Analyze Structure"):
     try:
         results = pcp.get_compounds(name, 'name')
         if results:
@@ -98,17 +104,19 @@ if st.button("Generate Isomers"):
                     elif tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW: a.SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
                 isomers.append(iso2)
 
+            st.write(f"Showing {len(isomers)} possible stereoisomers:")
+            
             cols = st.columns(len(isomers))
             for i, iso in enumerate(isomers):
                 with cols[i]:
                     Chem.AssignStereochemistry(iso, force=True, cleanIt=True)
                     axial = get_allene_stereo(iso)
-                    st.markdown(f"### Isomer {i+1}: <span style='color: #800000;'>{axial}</span>", unsafe_allow_html=True)
+                    st.markdown(f"#### Isomer {i+1}: <span style='color: #800000;'>{axial}</span>", unsafe_allow_html=True)
                     
-                    # الرسم الذكي (ألين عريض وواضح، والباقي عادي)
+                    # عرض الرسم المطور
                     st.image(render_smart_2d(iso), use_container_width=True)
                     
-                    # الـ 3D
+                    # عرض الـ 3D
                     m3d = Chem.AddHs(iso)
                     AllChem.EmbedMolecule(m3d, AllChem.ETKDG())
                     mblock = Chem.MolToMolBlock(m3d)
@@ -118,6 +126,6 @@ if st.button("Generate Isomers"):
                     view.zoomTo()
                     showmol(view)
         else:
-            st.error("Compound not found.")
+            st.error("Compound not found in database.")
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Analysis Error: {e}")
