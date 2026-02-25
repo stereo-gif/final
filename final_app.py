@@ -7,7 +7,7 @@ import py3Dmol
 import numpy as np
 
 # ==============================
-# 1. دالة الـ Ra/Sa للألين (مستقرة)
+# 1. دالة الـ Ra/Sa (للالين)
 # ==============================
 def get_allene_label(mol):
     try:
@@ -32,16 +32,7 @@ def get_allene_label(mol):
     return ""
 
 # ==============================
-# 2. حل مشكلة الرسم الـ 2D (بدون Instantiation Error)
-# ==============================
-def draw_mol_2d(mol):
-    # استخدام دالة Draw مباشرة لتجنب مشاكل الـ Abstract Class
-    img = Draw.MolToImage(mol, size=(400, 400), kekulize=True, wedgeBonds=True)
-    # wedgeBonds=True بتخلي الـ Stereochemistry (الروابط الطالعة والداخلة) واضحة جداً
-    st.image(img, use_container_width=True)
-
-# ==============================
-# 3. دالة الـ 3D (اللي اشتغلت معاكي)
+# 2. دالة الـ 3D 
 # ==============================
 def render_3d(mol):
     m3d = Chem.AddHs(mol)
@@ -54,49 +45,75 @@ def render_3d(mol):
     showmol(view, height=300, width=400)
 
 # ==============================
-# 4. التطبيق (UI)
+# 3. واجهة البرنامج (Streamlit)
 # ==============================
 st.set_page_config(layout="wide")
-st.title("Final Stereo Analyzer (No-Error Edition)")
+st.title("Full Stereoisomer Gallery (2D & 3D)")
 
-# المرجع العلمي اللي حفظناه
-with st.expander("📚 Stereoisomerism Notes"):
+# النوت العلمية المحفوظة
+with st.sidebar:
+    st.header("Saved Reference Guide")
     st.markdown("""
-    - **Cis / Trans**: Relative side.
-    - **E / Z**: Absolute priority side (Z = Same side).
-    - **R / S**: Chiral center (R = Clockwise).
-    - **Ra / Sa**: Axial chirality (Allenes).
+    - **Cis/Trans**: Relative side.
+    - **E/Z**: Absolute (CIP Rules).
+    - **R/S**: Chiral center.
+    - **Ra/Sa**: Axial (Allenes).
     """)
 
-name = st.text_input("Structure Name:", "2,3-pentadiene")
+name = st.text_input("Enter Molecule Name:", "Thalidomide")
 
-if st.button("Run Analysis"):
+if st.button("Generate Gallery"):
     try:
         results = pcp.get_compounds(name, 'name')
         if results:
             base_mol = Chem.MolFromSmiles(results[0].smiles)
-            # توليد الأيزومرات
+            
+            # توليد كل الأيزومرات الممكنة
             opts = EnumerateStereoisomers.StereoEnumerationOptions(tryEmbedding=True)
             isomers = list(EnumerateStereoisomers.EnumerateStereoisomers(base_mol, options=opts))
             
-            st.write(f"Found {len(isomers)} potential isomers.")
+            st.success(f"Found {len(isomers)} potential isomers.")
+            
+            # --- المرحلة الأولى: عرض كل الـ Isomers في Grid واحدة ---
+            st.subheader("2D Comparison Grid")
+            grid_labels = []
+            processed_isomers = []
             
             for i, iso in enumerate(isomers):
                 Chem.AssignStereochemistry(iso, force=True, cleanIt=True)
                 centers = Chem.FindMolChiralCenters(iso, includeUnassigned=True)
                 axial = get_allene_label(iso)
                 
-                label = f"Isomer {i+1} | R/S: {centers}"
-                if axial: label += f" | Axial: {axial}"
+                label = f"Isomer {i+1}\nRS:{centers}"
+                if axial: label += f"\nAxial:{axial}"
                 
-                st.subheader(label)
-                col1, col2 = st.columns(2)
+                grid_labels.append(label)
+                processed_isomers.append(iso)
+            
+            # رسم الشبكة (Grid)
+            img = Draw.MolsToGridImage(processed_isomers, 
+                                       molsPerRow=3, 
+                                       subImgSize=(300, 300), 
+                                       legends=grid_labels,
+                                       useSVG=False) # PNG أسرع في الـ Grid
+            st.image(img, use_container_width=True)
+            
+            st.divider()
+            
+            # --- المرحلة الثانية: عرض التفاصيل والـ 3D لكل واحد ---
+            st.subheader("Detailed 3D Analysis")
+            for i, iso in enumerate(processed_isomers):
+                col1, col2 = st.columns([1, 2])
                 with col1:
-                    draw_mol_2d(iso)
+                    st.markdown(f"### Isomer {i+1}")
+                    st.write(f"**Configuration:** {grid_labels[i]}")
+                    # إعادة رسم 2D مكبرة
+                    st.image(Draw.MolToImage(iso, size=(400, 400), wedgeBonds=True))
                 with col2:
                     render_3d(iso)
                 st.divider()
+                
         else:
-            st.error("Not found.")
+            st.error("Compound not found.")
     except Exception as e:
         st.error(f"Error: {e}")
