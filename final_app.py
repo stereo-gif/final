@@ -8,20 +8,23 @@ import py3Dmol
 import numpy as np
 
 # 1. إعدادات الصفحة
-st.set_page_config(page_title="StereoMaster Pro", layout="wide")
+st.set_page_config(page_title="Chemical Isomer Analysis", layout="wide")
 
-# 2. تصميم النوت بشكل "أنيق وبسيط" (Modern Header)
-st.markdown("<h1 style='text-align: center; color: #800000; font-family: serif;'>StereoMaster Pro</h1>", unsafe_allow_html=True)
-
-# المرجع العلمي بشكل سطر واحد احترافي
+# 2. النوت بنفس التنسيق اللي حبيتيه (ظاهرة في الصفحة الرئيسية)
 st.markdown("""
-<div style="text-align: center; border-top: 1px solid #eee; border-bottom: 1px solid #eee; padding: 10px; margin-bottom: 30px;">
-    <span style="margin: 0 15px;"><b>Cis/Trans</b> (Relative)</span> | 
-    <span style="margin: 0 15px;"><b>E/Z</b> (Absolute)</span> | 
-    <span style="margin: 0 15px;"><b>R/S</b> (Optical)</span> | 
-    <span style="margin: 0 15px;"><b>Ra/Sa</b> (Axial)</span>
+<div style="background-color: #fdf2f2; padding: 15px; border-radius: 10px; border-left: 5px solid #800000; margin-bottom: 20px;">
+    <strong style="color: #800000; font-size: 1.2em;">Stereoisomerism Reference Guide:</strong><br>
+    <ul style="list-style-type: none; padding-left: 0; margin-top: 10px; color: black;">
+        <li>1. <b>Cis / Trans (Relative):</b> Identical groups on same/opposite sides.</li>
+        <li>2. <b>E / Z (Absolute - CIP System):</b> High-priority groups together (Z) or opposite (E).</li>
+        <li>3. <b>R / S (Optical):</b> Absolute configuration of chiral centers.</li>
+        <li>4. <b>Ra / Sa (Axial):</b> Stereochemistry of Allenes (C=C=C).</li>
+    </ul>
+    <small style="color: #555;">*Note: E/Z is required when all 4 groups on the double bond are different.</small>
 </div>
 """, unsafe_allow_html=True)
+
+st.markdown("<h2 style='color: #800000; font-family: serif; border-bottom: 2px solid #dcdde1;'>Chemical Isomer Analysis System 2.0</h2>", unsafe_allow_html=True)
 
 # دالة الرسم (ألين محدد والباقي ناعم)
 def render_smart_2d(mol):
@@ -38,16 +41,16 @@ def render_smart_2d(mol):
     d_opts.addStereoAnnotation = True
     
     if is_allene:
-        d_opts.bondLineWidth = 3.0
+        d_opts.bondLineWidth = 3.0    # سُمك مخصص للألين عشان الـ Wedges تظهر
         d_opts.minFontSize = 18
     else:
-        d_opts.bondLineWidth = 1.6
+        d_opts.bondLineWidth = 1.6    # سُمك رقيق للمركبات العادية
         d_opts.minFontSize = 14
 
     img = Draw.MolToImage(m, size=(500, 500), options=d_opts)
     return img
 
-# دالة حساب Ra/Sa
+# دالة حساب Ra/Sa للألين
 def get_allene_stereo(mol):
     try:
         m = Chem.AddHs(mol)
@@ -70,22 +73,17 @@ def get_allene_stereo(mol):
     except: return ""
     return ""
 
-# المدخلات (موجودة في الـ Main)
-with st.container():
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        name = st.text_input("Enter Structure Name:", "2,3-pentadiene")
-    with col2:
-        st.write("##") # مسافة
-        run_btn = st.button("Analyze Structure", use_container_width=True)
+# المدخلات
+name = st.text_input("Enter Structure Name:", "2,3-pentadiene")
 
-if run_btn:
+if st.button("Analyze & Visualize"):
     try:
         results = pcp.get_compounds(name, 'name')
         if results:
             base_mol = Chem.MolFromSmiles(results[0].smiles)
             pattern = Chem.MolFromSmarts("C=C=C")
             
+            # معالجة الألين
             if base_mol.HasSubstructMatch(pattern):
                 for match in base_mol.GetSubstructMatches(pattern):
                     base_mol.GetAtomWithIdx(match[0]).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
@@ -93,12 +91,13 @@ if run_btn:
             opts = StereoEnumerationOptions(tryEmbedding=True, onlyUnassigned=False)
             isomers = list(EnumerateStereoisomers(base_mol, options=opts))
             
+            # ضمان وجود أيزومرين للألين
             if len(isomers) == 1 and base_mol.HasSubstructMatch(pattern):
                 iso2 = Chem.Mol(isomers[0])
                 for a in iso2.GetAtoms():
                     tag = a.GetChiralTag()
-                    if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CW: a.SetChiralTag(Chem.ChiralType.CHI_TETRA_CCW)
-                    elif tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW: a.SetChiralTag(Chem.ChiralType.CHI_TETRA_CW)
+                    if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CW: a.SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CCW)
+                    elif tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW: a.SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
                 isomers.append(iso2)
 
             st.write("---")
@@ -108,9 +107,11 @@ if run_btn:
                     Chem.AssignStereochemistry(iso, force=True, cleanIt=True)
                     axial = get_allene_stereo(iso)
                     st.markdown(f"#### Isomer {i+1}: <span style='color: #800000;'>{axial}</span>", unsafe_allow_html=True)
+                    
+                    # الرسم الاحترافي
                     st.image(render_smart_2d(iso), use_container_width=True)
                     
-                    # 3D
+                    # الـ 3D
                     m3d = Chem.AddHs(iso)
                     AllChem.EmbedMolecule(m3d, AllChem.ETKDG())
                     mblock = Chem.MolToMolBlock(m3d)
