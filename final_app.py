@@ -7,23 +7,42 @@ from stmol import showmol
 import py3Dmol
 import numpy as np
 
-# 1. إعدادات الصفحة والـ Sidebar
-st.set_page_config(page_title="StereoMaster Pro 2026", layout="wide")
+# 1. إعدادات الواجهة
+st.set_page_config(page_title="StereoMaster Pro", layout="wide")
 
+# الـ Sidebar (المرجع العلمي)
 with st.sidebar:
     st.markdown("""
     <div style="background-color: #fdf2f2; padding: 15px; border-radius: 10px; border: 1px solid #800000;">
         <h3 style="color: #800000; font-family: serif;">Scientific Notes</h3>
         <p><b>1. Cis / Trans:</b> Relative side.</p>
-        <p><b>2. E / Z:</b> Absolute (CIP System).</p>
+        <p><b>2. E / Z:</b> Absolute priority.</p>
         <p><b>3. R / S:</b> Chiral Centers.</p>
         <p><b>4. Ra / Sa:</b> Axial (Allenes).</p>
     </div>
     """, unsafe_allow_html=True)
 
-st.markdown("<h2 style='color: #800000; font-family: serif; border-bottom: 2px solid #dcdde1;'>Chemical Isomer Analysis System 2.0</h2>", unsafe_allow_html=True)
+# دالة الرسم "فائقة الوضوح" (The High-Contrast Renderer)
+def render_ultra_clear_2d(mol):
+    m = Chem.AddHs(mol)
+    AllChem.Compute2DCoords(m)
+    Chem.WedgeMolBonds(m, m.GetConformer())
+    
+    # تعديل خيارات الرسم لزيادة التباين (Contrast)
+    d_opts = Draw.MolDrawOptions()
+    d_opts.addStereoAnnotation = True
+    d_opts.bondLineWidth = 4.0        # زيادة سمك الروابط العادية
+    d_opts.baseFontSize = 0.8         # تكبير حجم الخط
+    d_opts.stereoBondWidth = 6.0      # زيادة عرض المثلث (Wedge)
+    d_opts.dashSpacing = 4.0          # توضيح المسافات في الروابط المنقطة (Hatched)
+    d_opts.fixedFontSize = 24         # تثبيت حجم خط الذرات
+    d_opts.annotationFontScale = 1.2  # تكبير علامات R/S
+    
+    # استخدام MolToImage مع الـ Options الجديدة
+    img = Draw.MolToImage(m, size=(500, 500), options=d_opts)
+    return img
 
-# --- دالة حساب Ra/Sa للألين ---
+# دالة حساب Ra/Sa
 def get_allene_stereo(mol):
     try:
         m = Chem.AddHs(mol)
@@ -46,42 +65,27 @@ def get_allene_stereo(mol):
     except: return ""
     return ""
 
-# --- دالة الرسم (الحل النهائي المضمون للـ Wedges) ---
-def render_perfect_2d(mol):
-    # إضافة الهيدروجين ضروري جداً عشان الـ Wedges تظهر زي الصورة
-    m = Chem.AddHs(mol)
-    AllChem.Compute2DCoords(m)
-    # إجبار الـ RDKit على حساب الروابط الفراغية للرسم
-    Chem.WedgeMolBonds(m, m.GetConformer())
-    
-    # الرسم باستخدام PIL Image (أكثر استقراراً في Streamlit)
-    img = Draw.MolToImage(m, 
-                          size=(400, 400), 
-                          wedgeBonds=True, 
-                          addStereoAnnotation=True,
-                          legend="")
-    return img
-
-# --- منطق البرنامج الرئيسي ---
-name = st.text_input("Enter Molecule Name:", "2,3-pentadiene")
+# التطبيق
+st.markdown("<h2 style='color: #800000;'>High-Contrast Stereo Analyzer</h2>", unsafe_allow_html=True)
+name = st.text_input("Enter Molecule Name:", "1,3-dichloropropadiene")
 
 if st.button("Generate Isomers"):
     try:
         results = pcp.get_compounds(name, 'name')
         if results:
-            base_mol = Chem.MolFromSmiles(results[0].smiles)
+            mol = Chem.MolFromSmiles(results[0].smiles)
             
-            # كشف الألين وإجبار الكايراليتي
+            # حيلة الألين لإجبار الأيزومرات
             pattern = Chem.MolFromSmarts("C=C=C")
-            if base_mol.HasSubstructMatch(pattern):
-                for match in base_mol.GetSubstructMatches(pattern):
-                    base_mol.GetAtomWithIdx(match[0]).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
+            if mol.HasSubstructMatch(pattern):
+                for match in mol.GetSubstructMatches(pattern):
+                    mol.GetAtomWithIdx(match[0]).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
 
             opts = StereoEnumerationOptions(tryEmbedding=True, onlyUnassigned=False)
-            isomers = list(EnumerateStereoisomers(base_mol, options=opts))
+            isomers = list(EnumerateStereoisomers(mol, options=opts))
             
-            # ضمان وجود أيزومرين للألين
-            if len(isomers) == 1 and base_mol.HasSubstructMatch(pattern):
+            # ضمان النسخة المرآة
+            if len(isomers) == 1 and mol.HasSubstructMatch(pattern):
                 iso2 = Chem.Mol(isomers[0])
                 for a in iso2.GetAtoms():
                     tag = a.GetChiralTag()
@@ -89,27 +93,24 @@ if st.button("Generate Isomers"):
                     elif tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW: a.SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
                 isomers.append(iso2)
 
-            # العرض في أعمدة
             cols = st.columns(len(isomers))
             for i, iso in enumerate(isomers):
                 with cols[i]:
                     Chem.AssignStereochemistry(iso, force=True, cleanIt=True)
                     axial = get_allene_stereo(iso)
-                    st.markdown(f"### Isomer {i+1}: <span style='color: #b22222;'>{axial}</span>", unsafe_allow_html=True)
+                    st.markdown(f"### Isomer {i+1}: <span style='color: #800000;'>{axial}</span>", unsafe_allow_html=True)
                     
-                    # عرض الـ 2D بالـ Wedges
-                    st.image(render_perfect_2d(iso), use_container_width=True)
+                    # الرسم فائق الوضوح
+                    st.image(render_ultra_clear_2d(iso), use_container_width=True)
                     
-                    # عرض الـ 3D
+                    # الـ 3D
                     m3d = Chem.AddHs(iso)
                     AllChem.EmbedMolecule(m3d, AllChem.ETKDG())
                     mblock = Chem.MolToMolBlock(m3d)
-                    view = py3Dmol.view(width=350, height=300)
+                    view = py3Dmol.view(width=300, height=300)
                     view.addModel(mblock, 'mol')
-                    view.setStyle({'stick': {}, 'sphere': {'scale': 0.3}})
+                    view.setStyle({'stick': {'width': 6}, 'sphere': {'scale': 0.3}})
                     view.zoomTo()
                     showmol(view)
-        else:
-            st.error("Compound not found.")
     except Exception as e:
-        st.error(f"Something went wrong: {e}")
+        st.error(f"Error: {e}")
