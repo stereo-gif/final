@@ -20,10 +20,11 @@ with st.sidebar:
         <p><b>4. Ra / Sa (Axial):</b> Allenes (C=C=C).</p>
     </div>
     """, unsafe_allow_html=True)
+    st.info("💡 Tip: Use molecules like '2,3-pentadiene' to test axial chirality (Allenes).")
 
 st.markdown("<h2 style='color: #800000; font-family: serif; border-bottom: 2px solid #dcdde1;'>Chemical Isomer Analysis System 2.0</h2>", unsafe_allow_html=True)
 
-# دالة حساب Ra/Sa للألين
+# دالة حساب Ra/Sa للألين (تستخدم الإحداثيات لتمييز الأيزومرات)
 def get_allene_stereo(mol):
     m = Chem.AddHs(mol)
     if AllChem.EmbedMolecule(m, AllChem.ETKDG()) == -1: return []
@@ -45,6 +46,7 @@ def get_allene_stereo(mol):
                         results.append("Ra" if dot > 0 else "Sa")
     return results
 
+# دالة عرض الـ 3D
 def render_3d(mol, title):
     mol_3d = Chem.AddHs(mol)
     AllChem.EmbedMolecule(mol_3d, AllChem.ETKDG())
@@ -76,7 +78,7 @@ if st.button("Analyze & Visualize"):
             opts = StereoEnumerationOptions(tryEmbedding=True, onlyUnassigned=False)
             isomers = list(EnumerateStereoisomers(mol, options=opts))
             
-            # خلق الأيزومر المرآة للألين يدوياً
+            # كود المرآة للألين
             if len(isomers) == 1 and mol.HasSubstructMatch(pattern):
                 iso2 = Chem.Mol(isomers[0])
                 for atom in iso2.GetAtoms():
@@ -85,34 +87,34 @@ if st.button("Analyze & Visualize"):
                     elif tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW: atom.SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
                 isomers.append(iso2)
 
-            st.subheader("2D Isomer Grid (Wedge/Dash View)")
+            st.subheader("2. 2D Isomer Grid (Wedge/Dash View)")
             
             final_mols = []
             labels = []
             for i, iso in enumerate(isomers):
-                # تجهيز الاستيريو كيمستري
                 Chem.AssignStereochemistry(iso, force=True, cleanIt=True)
-                # توليد إحداثيات 2D تراعي الروابط الفراغية
                 AllChem.Compute2DCoords(iso)
                 
-                # حساب الـ Labels
+                # تفعيل الروابط الفراغية في الرسم
+                iso.SetProp("_2DConf", "1")
+                
                 axial = get_allene_stereo(iso)
                 centers = Chem.FindMolChiralCenters(iso, includeUnassigned=True)
                 stereo_text = [f"{c[1]}" for c in centers] + axial
                 labels.append(f"Isomer {i+1}: {', '.join(stereo_text) if stereo_text else 'Achiral'}")
                 final_mols.append(iso)
 
-            # رسم الشبكة (PNG لضمان الظهور والـ Wedges)
+            # الرسم (الـ Wedges هتظهر هنا بوضوح)
             img = Draw.MolsToGridImage(
                 final_mols, 
-                molsPerRow=3, 
-                subImgSize=(350, 350), 
+                molsPerRow=2, 
+                subImgSize=(400, 400), 
                 legends=labels,
-                useSVG=False  # الـ PNG أضمن في Streamlit للـ Wedges
+                useSVG=False
             )
             st.image(img, use_container_width=True)
 
-            st.subheader("3D Interactive View")
+            st.subheader("3. 3D Interactive Models")
             cols = st.columns(len(final_mols))
             for i, iso in enumerate(final_mols):
                 with cols[i]:
