@@ -8,9 +8,8 @@ import py3Dmol
 import numpy as np
 
 # 1. إعدادات الواجهة
-st.set_page_config(page_title="StereoMaster Pro", layout="wide")
+st.set_page_config(page_title="StereoMaster Pro 2026", layout="wide")
 
-# الـ Sidebar (المرجع العلمي)
 with st.sidebar:
     st.markdown("""
     <div style="background-color: #fdf2f2; padding: 15px; border-radius: 10px; border: 1px solid #800000;">
@@ -22,27 +21,25 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-# دالة الرسم "فائقة الوضوح" (The High-Contrast Renderer)
+# دالة الرسم "الواضحة جداً" بدون أخطاء Attributes
 def render_ultra_clear_2d(mol):
     m = Chem.AddHs(mol)
     AllChem.Compute2DCoords(m)
     Chem.WedgeMolBonds(m, m.GetConformer())
     
-    # تعديل خيارات الرسم لزيادة التباين (Contrast)
+    # خيارات الرسم لزيادة الوضوح والسمك (بدون استخدام سمات غير معروفة)
     d_opts = Draw.MolDrawOptions()
     d_opts.addStereoAnnotation = True
-    d_opts.bondLineWidth = 4.0        # زيادة سمك الروابط العادية
-    d_opts.baseFontSize = 0.8         # تكبير حجم الخط
-    d_opts.stereoBondWidth = 6.0      # زيادة عرض المثلث (Wedge)
-    d_opts.dashSpacing = 4.0          # توضيح المسافات في الروابط المنقطة (Hatched)
-    d_opts.fixedFontSize = 24         # تثبيت حجم خط الذرات
-    d_opts.annotationFontScale = 1.2  # تكبير علامات R/S
+    d_opts.bondLineWidth = 3.5       # زيادة سمك كل الروابط لجعلها Bold
+    d_opts.minFontSize = 20          # تكبير حجم خط الذرات
+    d_opts.annotationFontScale = 1.0 # حجم علامات R/S
+    d_opts.prepareMolsBeforeDrawing = True 
     
-    # استخدام MolToImage مع الـ Options الجديدة
+    # استخدام MolToImage اللي بيتعامل مع الـ Wedges بشكل افتراضي عريض
     img = Draw.MolToImage(m, size=(500, 500), options=d_opts)
     return img
 
-# دالة حساب Ra/Sa
+# دالة حساب Ra/Sa للألين
 def get_allene_stereo(mol):
     try:
         m = Chem.AddHs(mol)
@@ -65,8 +62,7 @@ def get_allene_stereo(mol):
     except: return ""
     return ""
 
-# التطبيق
-st.markdown("<h2 style='color: #800000;'>High-Contrast Stereo Analyzer</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='color: #800000;'>High-Contrast Isomer Analyzer</h2>", unsafe_allow_html=True)
 name = st.text_input("Enter Molecule Name:", "1,3-dichloropropadiene")
 
 if st.button("Generate Isomers"):
@@ -75,7 +71,6 @@ if st.button("Generate Isomers"):
         if results:
             mol = Chem.MolFromSmiles(results[0].smiles)
             
-            # حيلة الألين لإجبار الأيزومرات
             pattern = Chem.MolFromSmarts("C=C=C")
             if mol.HasSubstructMatch(pattern):
                 for match in mol.GetSubstructMatches(pattern):
@@ -84,7 +79,6 @@ if st.button("Generate Isomers"):
             opts = StereoEnumerationOptions(tryEmbedding=True, onlyUnassigned=False)
             isomers = list(EnumerateStereoisomers(mol, options=opts))
             
-            # ضمان النسخة المرآة
             if len(isomers) == 1 and mol.HasSubstructMatch(pattern):
                 iso2 = Chem.Mol(isomers[0])
                 for a in iso2.GetAtoms():
@@ -100,10 +94,10 @@ if st.button("Generate Isomers"):
                     axial = get_allene_stereo(iso)
                     st.markdown(f"### Isomer {i+1}: <span style='color: #800000;'>{axial}</span>", unsafe_allow_html=True)
                     
-                    # الرسم فائق الوضوح
+                    # الرسم بالسمك الجديد
                     st.image(render_ultra_clear_2d(iso), use_container_width=True)
                     
-                    # الـ 3D
+                    # الـ 3D للتأكيد
                     m3d = Chem.AddHs(iso)
                     AllChem.EmbedMolecule(m3d, AllChem.ETKDG())
                     mblock = Chem.MolToMolBlock(m3d)
@@ -112,5 +106,7 @@ if st.button("Generate Isomers"):
                     view.setStyle({'stick': {'width': 6}, 'sphere': {'scale': 0.3}})
                     view.zoomTo()
                     showmol(view)
+        else:
+            st.error("Compound not found.")
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error details: {e}")
