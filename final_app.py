@@ -2,72 +2,46 @@ import streamlit as st
 import pubchempy as pcp
 from rdkit import Chem
 from rdkit.Chem import Draw, AllChem, EnumerateStereoisomers
-# استيراد rdMolDraw2D بطريقة أكثر أماناً
-try:
-    from rdkit.Chem.Draw import rdMolDraw2D
-except ImportError:
-    from rdkit.Chem import rdMolDraw2D
-
 from stmol import showmol
 import py3Dmol
 import numpy as np
 
 # ==============================
-# 1. حساب الكايراليتي المحورية للألين
+# 1. دالة الـ Ra/Sa للألين (مستقرة)
 # ==============================
-def get_allene_axial_config(mol):
-    m = Chem.AddHs(mol)
-    if AllChem.EmbedMolecule(m, AllChem.ETKDG()) == -1: return []
-    conf = m.GetConformer()
-    results = []
-    for bond in m.GetBonds():
-        if bond.GetBondType() == Chem.BondType.DOUBLE:
-            a1, a2 = bond.GetBeginAtom(), bond.GetEndAtom()
-            for nb in a2.GetBonds():
-                if nb.GetIdx() == bond.GetIdx(): continue
-                if nb.GetBondType() == Chem.BondType.DOUBLE:
-                    a3 = nb.GetOtherAtom(a2)
-                    l_subs = sorted([n for n in a1.GetNeighbors() if n.GetIdx()!=a2.GetIdx()], key=lambda x: x.GetAtomicNum(), reverse=True)
-                    r_subs = sorted([n for n in a3.GetNeighbors() if n.GetIdx()!=a2.GetIdx()], key=lambda x: x.GetAtomicNum(), reverse=True)
-                    if len(l_subs) >= 2 and len(r_subs) >= 2:
-                        p1, p3 = np.array(conf.GetAtomPosition(a1.GetIdx())), np.array(conf.GetAtomPosition(a3.GetIdx()))
-                        pl, pr = np.array(conf.GetAtomPosition(l_subs[0].GetIdx())), np.array(conf.GetAtomPosition(r_subs[0].GetIdx()))
-                        dot = np.dot(np.cross(pl-p1, p3-p1), pr-p3)
-                        results.append("Ra" if dot > 0 else "Sa")
-    return results
-
-# ==============================
-# 2. حل مشكلة الرسم (Pretty 2D)
-# ==============================
-def render_pretty_2d(mol, label, axial_label=""):
-    mc = Chem.Mol(mol)
-    AllChem.Compute2DCoords(mc)
-    
-    # محاولة استخدام السحب (SVG) بطريقة متوافقة
+def get_allene_label(mol):
     try:
-        drawer = rdMolDraw2D.MolDraw2DSvg(400, 400)
-    except AttributeError:
-        # حل بديل لو النسخة مختلفة
-        drawer = rdMolDraw2D.MolDraw2D(400, 400)
-        
-    options = drawer.drawOptions()
-    options.addStereoAnnotation = True
-    options.atomLabelFontSize = 25
-    options.bondLineWidth = 3
-    
-    rdMolDraw2D.PrepareAndDrawMolecule(drawer, mc)
-    drawer.FinishDrawing()
-    svg = drawer.GetDrawingText()
-    
-    st.write(f"### {label}")
-    if axial_label:
-        st.success(f"**Axial Chirality:** {axial_label}")
-    
-    # عرض الـ SVG مباشرة في Streamlit
-    st.image(svg, use_container_width=True)
+        m = Chem.AddHs(mol)
+        if AllChem.EmbedMolecule(m, AllChem.ETKDG()) == -1: return ""
+        conf = m.GetConformer()
+        for b in m.GetBonds():
+            if b.GetBondType() == Chem.BondType.DOUBLE:
+                a1, a2 = b.GetBeginAtom(), b.GetEndAtom()
+                for nb in a2.GetBonds():
+                    if nb.GetIdx() == b.GetIdx(): continue
+                    if nb.GetBondType() == Chem.BondType.DOUBLE:
+                        a3 = nb.GetOtherAtom(a2)
+                        l_subs = sorted([n for n in a1.GetNeighbors() if n.GetIdx()!=a2.GetIdx()], key=lambda x: x.GetAtomicNum(), reverse=True)
+                        r_subs = sorted([n for n in a3.GetNeighbors() if n.GetIdx()!=a2.GetIdx()], key=lambda x: x.GetAtomicNum(), reverse=True)
+                        if l_subs and r_subs:
+                            p1, p3 = np.array(conf.GetAtomPosition(a1.GetIdx())), np.array(conf.GetAtomPosition(a3.GetIdx()))
+                            pl, pr = np.array(conf.GetAtomPosition(l_subs[0].GetIdx())), np.array(conf.GetAtomPosition(r_subs[0].GetIdx()))
+                            dot = np.dot(np.cross(pl-p1, p3-p1), pr-p3)
+                            return "Ra" if dot > 0 else "Sa"
+    except: return ""
+    return ""
 
 # ==============================
-# 3. عرض الـ 3D (المستقر)
+# 2. حل مشكلة الرسم الـ 2D (بدون Instantiation Error)
+# ==============================
+def draw_mol_2d(mol):
+    # استخدام دالة Draw مباشرة لتجنب مشاكل الـ Abstract Class
+    img = Draw.MolToImage(mol, size=(400, 400), kekulize=True, wedgeBonds=True)
+    # wedgeBonds=True بتخلي الـ Stereochemistry (الروابط الطالعة والداخلة) واضحة جداً
+    st.image(img, use_container_width=True)
+
+# ==============================
+# 3. دالة الـ 3D (اللي اشتغلت معاكي)
 # ==============================
 def render_3d(mol):
     m3d = Chem.AddHs(mol)
@@ -80,44 +54,49 @@ def render_3d(mol):
     showmol(view, height=300, width=400)
 
 # ==============================
-# 4. واجهة البرنامج الرئيسية
+# 4. التطبيق (UI)
 # ==============================
-st.set_page_config(page_title="StereoMaster 2026", layout="wide")
+st.set_page_config(layout="wide")
+st.title("Final Stereo Analyzer (No-Error Edition)")
 
-# النوت العلمية اللي طلبتيها
-with st.sidebar:
-    st.header("📚 Stereoisomerism Guide")
-    st.info("""
-    - **R / S**: Chiral center configuration.
-    - **Ra / Sa**: Axial chirality in Allenes.
-    - **E / Z**: Absolute double bond geometry.
+# المرجع العلمي اللي حفظناه
+with st.expander("📚 Stereoisomerism Notes"):
+    st.markdown("""
+    - **Cis / Trans**: Relative side.
+    - **E / Z**: Absolute priority side (Z = Same side).
+    - **R / S**: Chiral center (R = Clockwise).
+    - **Ra / Sa**: Axial chirality (Allenes).
     """)
 
-name = st.text_input("Enter Molecule Name:", "2,3-pentadiene")
+name = st.text_input("Structure Name:", "2,3-pentadiene")
 
-if st.button("Generate Isomers"):
+if st.button("Run Analysis"):
     try:
         results = pcp.get_compounds(name, 'name')
         if results:
             base_mol = Chem.MolFromSmiles(results[0].smiles)
-            opts = EnumerateStereoisomers.StereoEnumerationOptions(tryEmbedding=True, onlyUnassigned=False)
+            # توليد الأيزومرات
+            opts = EnumerateStereoisomers.StereoEnumerationOptions(tryEmbedding=True)
             isomers = list(EnumerateStereoisomers.EnumerateStereoisomers(base_mol, options=opts))
             
-            st.write(f"Found {len(isomers)} possible isomers.")
+            st.write(f"Found {len(isomers)} potential isomers.")
             
             for i, iso in enumerate(isomers):
                 Chem.AssignStereochemistry(iso, force=True, cleanIt=True)
                 centers = Chem.FindMolChiralCenters(iso, includeUnassigned=True)
-                axial = get_allene_axial_config(iso)
+                axial = get_allene_label(iso)
                 
+                label = f"Isomer {i+1} | R/S: {centers}"
+                if axial: label += f" | Axial: {axial}"
+                
+                st.subheader(label)
                 col1, col2 = st.columns(2)
                 with col1:
-                    render_pretty_2d(iso, f"Isomer {i+1} (R/S: {centers})", axial_label=axial)
+                    draw_mol_2d(iso)
                 with col2:
-                    st.write("**3D Interactive Model**")
                     render_3d(iso)
                 st.divider()
         else:
-            st.error("Compound not found.")
+            st.error("Not found.")
     except Exception as e:
         st.error(f"Error: {e}")
