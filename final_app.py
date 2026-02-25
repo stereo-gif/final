@@ -8,31 +8,22 @@ import py3Dmol
 import numpy as np
 
 # 1. إعدادات الصفحة
-st.set_page_config(page_title="Professional Isomer Analyzer", layout="wide")
+st.set_page_config(page_title="StereoMaster Pro", layout="wide")
 
-# 2. عرض النوت (Reference Guide) في واجهة التطبيق الرئيسية
+# 2. تصميم النوت بشكل "أنيق وبسيط" (Modern Header)
+st.markdown("<h1 style='text-align: center; color: #800000; font-family: serif;'>StereoMaster Pro</h1>", unsafe_allow_html=True)
+
+# المرجع العلمي بشكل سطر واحد احترافي
 st.markdown("""
-<div style="background-color: #fdf2f2; padding: 20px; border-radius: 15px; border-left: 8px solid #800000; margin-bottom: 25px;">
-    <h3 style="color: #800000; font-family: serif; margin-top: 0;">🧪 Stereoisomerism Reference Guide</h3>
-    <table style="width:100%; border:none; color: #333;">
-        <tr>
-            <td><b>1. Cis / Trans:</b> Relative side arrangement.</td>
-            <td><b>2. E / Z (CIP):</b> Absolute priority system.</td>
-        </tr>
-        <tr>
-            <td><b>3. R / S:</b> Optical chirality centers.</td>
-            <td><b>4. Ra / Sa (Axial):</b> Allenes (C=C=C systems).</td>
-        </tr>
-    </table>
-    <p style="margin-bottom: 0; margin-top: 10px; font-size: 0.9em; color: #666;">
-        <i>*Note: E/Z is required when all 4 groups on the double bond are different.</i>
-    </p>
+<div style="text-align: center; border-top: 1px solid #eee; border-bottom: 1px solid #eee; padding: 10px; margin-bottom: 30px;">
+    <span style="margin: 0 15px;"><b>Cis/Trans</b> (Relative)</span> | 
+    <span style="margin: 0 15px;"><b>E/Z</b> (Absolute)</span> | 
+    <span style="margin: 0 15px;"><b>R/S</b> (Optical)</span> | 
+    <span style="margin: 0 15px;"><b>Ra/Sa</b> (Axial)</span>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("<h2 style='color: #800000; font-family: serif;'>Professional Isomer Analysis System</h2>", unsafe_allow_html=True)
-
-# دالة الرسم الذكية (ألين واضح وباقي المركبات رقيقة)
+# دالة الرسم (ألين محدد والباقي ناعم)
 def render_smart_2d(mol):
     is_allene = mol.HasSubstructMatch(Chem.MolFromSmarts("C=C=C"))
     m = Chem.AddHs(mol) if is_allene else Chem.RemoveHs(mol)
@@ -79,10 +70,16 @@ def get_allene_stereo(mol):
     except: return ""
     return ""
 
-# المدخلات
-name = st.text_input("Enter Molecule Name (e.g., 2,3-pentadiene or Tartaric acid):", "2,3-pentadiene")
+# المدخلات (موجودة في الـ Main)
+with st.container():
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        name = st.text_input("Enter Structure Name:", "2,3-pentadiene")
+    with col2:
+        st.write("##") # مسافة
+        run_btn = st.button("Analyze Structure", use_container_width=True)
 
-if st.button("Analyze Structure"):
+if run_btn:
     try:
         results = pcp.get_compounds(name, 'name')
         if results:
@@ -100,23 +97,20 @@ if st.button("Analyze Structure"):
                 iso2 = Chem.Mol(isomers[0])
                 for a in iso2.GetAtoms():
                     tag = a.GetChiralTag()
-                    if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CW: a.SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CCW)
-                    elif tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW: a.SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
+                    if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CW: a.SetChiralTag(Chem.ChiralType.CHI_TETRA_CCW)
+                    elif tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW: a.SetChiralTag(Chem.ChiralType.CHI_TETRA_CW)
                 isomers.append(iso2)
 
-            st.write(f"Showing {len(isomers)} possible stereoisomers:")
-            
+            st.write("---")
             cols = st.columns(len(isomers))
             for i, iso in enumerate(isomers):
                 with cols[i]:
                     Chem.AssignStereochemistry(iso, force=True, cleanIt=True)
                     axial = get_allene_stereo(iso)
                     st.markdown(f"#### Isomer {i+1}: <span style='color: #800000;'>{axial}</span>", unsafe_allow_html=True)
-                    
-                    # عرض الرسم المطور
                     st.image(render_smart_2d(iso), use_container_width=True)
                     
-                    # عرض الـ 3D
+                    # 3D
                     m3d = Chem.AddHs(iso)
                     AllChem.EmbedMolecule(m3d, AllChem.ETKDG())
                     mblock = Chem.MolToMolBlock(m3d)
@@ -126,6 +120,6 @@ if st.button("Analyze Structure"):
                     view.zoomTo()
                     showmol(view)
         else:
-            st.error("Compound not found in database.")
+            st.error("Compound not found.")
     except Exception as e:
-        st.error(f"Analysis Error: {e}")
+        st.error(f"Error: {e}")
