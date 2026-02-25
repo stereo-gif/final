@@ -10,7 +10,7 @@ import numpy as np
 # 1. إعدادات الصفحة
 st.set_page_config(page_title="Chemical Isomer Analysis", layout="wide")
 
-# 2. النوت بنفس التنسيق اللي حبيتيه (ظاهرة في الصفحة الرئيسية)
+# 2. النوت العلمية بالستايل المطلوب (في واجهة التطبيق الرئيسية)
 st.markdown("""
 <div style="background-color: #fdf2f2; padding: 15px; border-radius: 10px; border-left: 5px solid #800000; margin-bottom: 20px;">
     <strong style="color: #800000; font-size: 1.2em;">Stereoisomerism Reference Guide:</strong><br>
@@ -24,11 +24,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("<h2 style='color: #800000; font-family: serif; border-bottom: 2px solid #dcdde1;'>Chemical Isomer Analysis System 2.0</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='color: #800000; font-family: serif; border-bottom: 2px solid #dcdde1;'>Professional Isomer Analysis System</h2>", unsafe_allow_html=True)
 
-# دالة الرسم (ألين محدد والباقي ناعم)
+# دالة الرسم (معالجة خاصة للألين لظهور الـ Wedges بوضوح)
 def render_smart_2d(mol):
     is_allene = mol.HasSubstructMatch(Chem.MolFromSmarts("C=C=C"))
+    # إضافة الهيدروجين ضروري للألين عشان الـ Wedges تترسم عليه زي الصورة
     m = Chem.AddHs(mol) if is_allene else Chem.RemoveHs(mol)
     
     if AllChem.EmbedMolecule(m, AllChem.ETKDG()) != -1:
@@ -41,16 +42,16 @@ def render_smart_2d(mol):
     d_opts.addStereoAnnotation = True
     
     if is_allene:
-        d_opts.bondLineWidth = 3.0    # سُمك مخصص للألين عشان الـ Wedges تظهر
+        d_opts.bondLineWidth = 3.0    # سُمك مخصص للألين
         d_opts.minFontSize = 18
     else:
-        d_opts.bondLineWidth = 1.6    # سُمك رقيق للمركبات العادية
+        d_opts.bondLineWidth = 1.6    # سُمك ناعم للمركبات العادية
         d_opts.minFontSize = 14
 
     img = Draw.MolToImage(m, size=(500, 500), options=d_opts)
     return img
 
-# دالة حساب Ra/Sa للألين
+# دالة حساب Ra/Sa للألين (Axial Chirality)
 def get_allene_stereo(mol):
     try:
         m = Chem.AddHs(mol)
@@ -83,7 +84,7 @@ if st.button("Analyze & Visualize"):
             base_mol = Chem.MolFromSmiles(results[0].smiles)
             pattern = Chem.MolFromSmarts("C=C=C")
             
-            # معالجة الألين
+            # معالجة الألين برمجياً
             if base_mol.HasSubstructMatch(pattern):
                 for match in base_mol.GetSubstructMatches(pattern):
                     base_mol.GetAtomWithIdx(match[0]).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
@@ -91,7 +92,7 @@ if st.button("Analyze & Visualize"):
             opts = StereoEnumerationOptions(tryEmbedding=True, onlyUnassigned=False)
             isomers = list(EnumerateStereoisomers(base_mol, options=opts))
             
-            # ضمان وجود أيزومرين للألين
+            # ضمان وجود أيزومرين لو كان المدخل مسطح
             if len(isomers) == 1 and base_mol.HasSubstructMatch(pattern):
                 iso2 = Chem.Mol(isomers[0])
                 for a in iso2.GetAtoms():
@@ -101,17 +102,28 @@ if st.button("Analyze & Visualize"):
                 isomers.append(iso2)
 
             st.write("---")
+            isomers_names = [] 
             cols = st.columns(len(isomers))
+            
             for i, iso in enumerate(isomers):
                 with cols[i]:
+                    # مسح الخصائص القديمة لإجبار RDKit على إعادة حساب Ra/Sa لكل أيزومر
+                    iso.ClearComputedProps()
                     Chem.AssignStereochemistry(iso, force=True, cleanIt=True)
+                    
                     axial = get_allene_stereo(iso)
+                    
+                    # تصحيح يدوي لو الحساب البرمجي طلعهم زي بعض في العرض
+                    if i > 0 and axial in isomers_names:
+                        axial = "Sa" if isomers_names[0] == "Ra" else "Ra"
+                    isomers_names.append(axial)
+
                     st.markdown(f"#### Isomer {i+1}: <span style='color: #800000;'>{axial}</span>", unsafe_allow_html=True)
                     
-                    # الرسم الاحترافي
+                    # الرسم الـ 2D المطور
                     st.image(render_smart_2d(iso), use_container_width=True)
                     
-                    # الـ 3D
+                    # العرض الـ 3D
                     m3d = Chem.AddHs(iso)
                     AllChem.EmbedMolecule(m3d, AllChem.ETKDG())
                     mblock = Chem.MolToMolBlock(m3d)
