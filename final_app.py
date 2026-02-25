@@ -7,8 +7,8 @@ from stmol import showmol
 import py3Dmol
 import numpy as np
 
-# 1. إعدادات الواجهة
-st.set_page_config(page_title="StereoMaster Pro 2026", layout="wide")
+# 1. إعدادات الصفحة والـ Sidebar
+st.set_page_config(page_title="StereoMaster Pro", layout="wide")
 
 with st.sidebar:
     st.markdown("""
@@ -21,25 +21,35 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-# دالة الرسم "الواضحة جداً" بدون أخطاء Attributes
-def render_ultra_clear_2d(mol):
-    m = Chem.AddHs(mol)
-    AllChem.Compute2DCoords(m)
-    Chem.WedgeMolBonds(m, m.GetConformer())
+# دالة الرسم الذكية: تميز الألين وتعطيه رسم احترافي
+def render_smart_2d(mol):
+    # نتحقق إذا كان الجزيء ألين
+    is_allene = mol.HasSubstructMatch(Chem.MolFromSmarts("C=C=C"))
     
-    # خيارات الرسم لزيادة الوضوح والسمك (بدون استخدام سمات غير معروفة)
+    # إضافة الهيدروجين ضروري للألين ليظهر الـ Wedges عليه
+    m = Chem.AddHs(mol) if is_allene else Chem.RemoveHs(mol)
+    
+    # توليد إحداثيات (3D ثم 2D) لضمان ظهور الـ Wedges بشكل الكتاب المدرسي
+    if AllChem.EmbedMolecule(m, AllChem.ETKDG()) != -1:
+        AllChem.Compute2DCoords(m)
+        Chem.WedgeMolBonds(m, m.GetConformer())
+    else:
+        AllChem.Compute2DCoords(m)
+
     d_opts = Draw.MolDrawOptions()
     d_opts.addStereoAnnotation = True
-    d_opts.bondLineWidth = 3.5       # زيادة سمك كل الروابط لجعلها Bold
-    d_opts.minFontSize = 20          # تكبير حجم خط الذرات
-    d_opts.annotationFontScale = 1.0 # حجم علامات R/S
-    d_opts.prepareMolsBeforeDrawing = True 
     
-    # استخدام MolToImage اللي بيتعامل مع الـ Wedges بشكل افتراضي عريض
+    if is_allene:
+        d_opts.bondLineWidth = 3.0    # سُمك مخصص للألين لإبراز الـ Wedges
+        d_opts.minFontSize = 18
+    else:
+        d_opts.bondLineWidth = 1.5    # سُمك رقيق للمركبات العادية
+        d_opts.minFontSize = 14
+
     img = Draw.MolToImage(m, size=(500, 500), options=d_opts)
     return img
 
-# دالة حساب Ra/Sa للألين
+# دالة حساب Ra/Sa
 def get_allene_stereo(mol):
     try:
         m = Chem.AddHs(mol)
@@ -62,24 +72,25 @@ def get_allene_stereo(mol):
     except: return ""
     return ""
 
-st.markdown("<h2 style='color: #800000;'>High-Contrast Isomer Analyzer</h2>", unsafe_allow_html=True)
-name = st.text_input("Enter Molecule Name:", "1,3-dichloropropadiene")
+# واجهة التطبيق
+st.markdown("<h2 style='color: #800000;'>Professional Isomer Analyzer</h2>", unsafe_allow_html=True)
+name = st.text_input("Enter Molecule Name:", "2,3-pentadiene")
 
 if st.button("Generate Isomers"):
     try:
         results = pcp.get_compounds(name, 'name')
         if results:
-            mol = Chem.MolFromSmiles(results[0].smiles)
-            
+            base_mol = Chem.MolFromSmiles(results[0].smiles)
             pattern = Chem.MolFromSmarts("C=C=C")
-            if mol.HasSubstructMatch(pattern):
-                for match in mol.GetSubstructMatches(pattern):
-                    mol.GetAtomWithIdx(match[0]).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
+            
+            if base_mol.HasSubstructMatch(pattern):
+                for match in base_mol.GetSubstructMatches(pattern):
+                    base_mol.GetAtomWithIdx(match[0]).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
 
             opts = StereoEnumerationOptions(tryEmbedding=True, onlyUnassigned=False)
-            isomers = list(EnumerateStereoisomers(mol, options=opts))
+            isomers = list(EnumerateStereoisomers(base_mol, options=opts))
             
-            if len(isomers) == 1 and mol.HasSubstructMatch(pattern):
+            if len(isomers) == 1 and base_mol.HasSubstructMatch(pattern):
                 iso2 = Chem.Mol(isomers[0])
                 for a in iso2.GetAtoms():
                     tag = a.GetChiralTag()
@@ -94,19 +105,19 @@ if st.button("Generate Isomers"):
                     axial = get_allene_stereo(iso)
                     st.markdown(f"### Isomer {i+1}: <span style='color: #800000;'>{axial}</span>", unsafe_allow_html=True)
                     
-                    # الرسم بالسمك الجديد
-                    st.image(render_ultra_clear_2d(iso), use_container_width=True)
+                    # الرسم الذكي (ألين عريض وواضح، والباقي عادي)
+                    st.image(render_smart_2d(iso), use_container_width=True)
                     
-                    # الـ 3D للتأكيد
+                    # الـ 3D
                     m3d = Chem.AddHs(iso)
                     AllChem.EmbedMolecule(m3d, AllChem.ETKDG())
                     mblock = Chem.MolToMolBlock(m3d)
                     view = py3Dmol.view(width=300, height=300)
                     view.addModel(mblock, 'mol')
-                    view.setStyle({'stick': {'width': 6}, 'sphere': {'scale': 0.3}})
+                    view.setStyle({'stick': {}, 'sphere': {'scale': 0.3}})
                     view.zoomTo()
                     showmol(view)
         else:
             st.error("Compound not found.")
     except Exception as e:
-        st.error(f"Error details: {e}")
+        st.error(f"Error: {e}")
